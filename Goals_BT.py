@@ -142,7 +142,7 @@ class Avoid:
       - If any Rock/Wall is within threshold distance, turn away (one small step) and return True.
       - Otherwise return False so the tree moves on to RandomRoam.
     """
-    def __init__(self, a_agent, distance_threshold: float = 1.0):
+    def __init__(self, a_agent, distance_threshold: float = 2.5):  # previously 1.0
         self.a_agent = a_agent
         self.rc_sensor = a_agent.rc_sensor
         self.threshold = distance_threshold
@@ -153,12 +153,45 @@ class Avoid:
         infos = self.rc_sensor.sensor_rays[Sensors.RayCastSensor.OBJECT_INFO]
 
         # Build a mask of True only for Rock/Wall hits within threshold
+        """
         close_mask = []
         for hit, info in zip(hits, infos):
             if hit and info and info.get("tag") in ("Rock", "Wall") and info.get("distance", float("inf")) < self.threshold:
                 close_mask.append(True)
             else:
                 close_mask.append(False)
+        """
+        # Build a mask of True for any relevant obstacles:
+        # Astronaut dodges Critters; Critter dodges Flowers (in addition to Walls/Rocks)
+        agent_type = self.a_agent.AgentParameters["type"]
+        close_mask = []
+        for hit, info in zip(hits, infos):
+            if not hit or info is None:
+                close_mask.append(False)
+                continue
+            tag = info.get("tag")
+            dist = info.get("distance", float("inf"))
+            if dist >= self.threshold:
+                close_mask.append(False)
+                continue
+
+            # Always treat walls/rocks as obstacles
+            if tag in ("Rock", "Wall"):
+                close_mask.append(True)
+                continue
+
+            # Astronaut must dodge Critters
+            if agent_type == "AAgentAstronaut" and tag == "CritterMantaRay":
+                close_mask.append(True)
+                continue
+
+            # Critter must ignore walls/rocks but also avoid Flowers
+            if agent_type == "AAgentCritterMantaRay" and tag == "AlienFlower":
+                close_mask.append(True)
+                continue
+
+            # otherwise not an obstacle for this agent
+            close_mask.append(False)
 
         if not any(close_mask):
             # No obstacle close enough: let RandomRoam take over
@@ -336,4 +369,74 @@ class CheckInventoryFull:
         flower_count = sum(item["amount"] for item in self.i_state.myInventoryList if item["name"] == "AlienFlower")
         return flower_count >= 2
 
+class DetectAstronaut:
+    def __init__(self, a_agent):
+        self.a_agent = a_agent
+        self.sensor = a_agent.rc_sensor
 
+    def run(self) -> bool:
+        # Any ray detecting tag "Astronaut"?
+        for info in self.sensor.sensor_rays[Sensors.RayCastSensor.OBJECT_INFO]:
+            if info and info.get("tag") == "Astronaut":
+                return True
+        return False
+
+class FollowAstronaut:
+    def __init__(self, a_agent):
+        self.a_agent = a_agent
+        self.sensor = a_agent.rc_sensor
+        # tuning durations
+        self.TURN_TIME = 0.2
+        self.FORWARD_TIME = 0.5
+
+    async def run(self) -> bool:
+        # Locate all rays that see the Astronaut
+        hits = self.sensor.sensor_rays[Sensors.RayCastSensor.HIT]
+        infos = self.sensor.sensor_rays[Sensors.RayCastSensor.OBJECT_INFO]
+        indices = [
+            i for i, info in enumerate(infos)
+            if hits[i] and info and info.get("tag") == "Astronaut"
+        ]
+        if not indices:
+            return False
+        # pick median
+        mid_ray = len(hits) // 2
+        target = sorted(indices)[len(indices)//2]
+        # turn toward her
+        if target < mid_ray:
+            await self.a_agent.send_message("action", "tl")
+            await asyncio.sleep(self.TURN_TIME)
+            await self.a_agent.send_message("action", "nt")
+        elif target > mid_ray:
+            await self.a_agent.send_message("action", "tr")
+            await asyncio.sleep(self.TURN_TIME)
+            await self.a_agent.send_message("action", "nt")
+        # then move forward
+        await self.a_agent.send_message("action", "mf")
+        await asyncio.sleep(self.FORWARD_TIME)
+        return True
+
+class BiteAstronaut:
+    def __init__(self, a_agent):
+        self.a_agent = a_agent
+
+    async def run(self) -> bool:
+        # send bite action once
+        await self.a_agent.send_message("action", "bite")
+        # allow the engine to stun the astronaut
+        await asyncio.sleep(0.1)
+        return True
+
+
+class MoveAway:
+    def __init__(self, a_agent):
+        self.a_agent = a_agent
+        self.SAFE_TIME = 1.0
+
+    async def run(self) -> bool:
+        # back away a bit
+        await self.a_agent.send_message("action", "mb")
+        await asyncio.sleep(self.SAFE_TIME)
+        await self.a_agent.send_message("action", "mf")
+        await asyncio.sleep(self.SAFE_TIME)
+        return True

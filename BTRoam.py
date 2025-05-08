@@ -4,6 +4,7 @@ import py_trees
 import py_trees as pt
 from py_trees import common
 import Goals_BT
+from Goals_BT import DetectAstronaut, FollowAstronaut, BiteAstronaut, MoveAway
 import Sensors
 
 class BN_DoNothing(pt.behaviour.Behaviour):
@@ -194,35 +195,131 @@ class BN_ReturnToBase(pt.behaviour.Behaviour):
             self.my_goal.cancel()
             print("ReturnToBase task cancelled")
 
+class BN_DetectAstronaut(pt.behaviour.Behaviour):
+    def __init__(self, aagent):
+        super().__init__("BN_DetectAstronaut")
+        self.agent = aagent
+    def update(self):
+        return common.Status.SUCCESS if DetectAstronaut(self.agent).run() else common.Status.FAILURE
+
+class BN_FollowAstronaut(pt.behaviour.Behaviour):
+    def __init__(self, aagent):
+        super().__init__("BN_FollowAstronaut")
+        self.agent = aagent
+        self.task = None
+    def initialise(self):
+        self.task = asyncio.create_task(FollowAstronaut(self.agent).run())
+    def update(self):
+        if not self.task.done(): return common.Status.RUNNING
+        return common.Status.SUCCESS if self.task.result() else common.Status.FAILURE
+    def terminate(self, new_status):
+        if self.task and not self.task.done(): self.task.cancel()
+
+class BN_BiteAstronaut(pt.behaviour.Behaviour):
+    def __init__(self, aagent):
+        super().__init__("BN_BiteAstronaut")
+        self.agent = aagent
+        self.task = None
+    def initialise(self):
+        self.task = asyncio.create_task(BiteAstronaut(self.agent).run())
+    def update(self):
+        if not self.task.done(): return common.Status.RUNNING
+        return common.Status.SUCCESS if self.task.result() else common.Status.FAILURE
+
+class BN_MoveAway(pt.behaviour.Behaviour):
+    def __init__(self, aagent):
+        super().__init__("BN_MoveAway")
+        self.agent = aagent
+        self.task = None
+    def initialise(self):
+        self.task = asyncio.create_task(MoveAway(self.agent).run())
+    def update(self):
+        if not self.task.done(): return common.Status.RUNNING
+        return common.Status.SUCCESS if self.task.result() else common.Status.FAILURE
+
+class BN_DetectFrozen(pt.behaviour.Behaviour):
+    def __init__(self, aagent):
+        super(BN_DetectFrozen, self).__init__("BN_DetectFrozen")
+        self.my_agent = aagent
+        self.i_state = aagent.i_state
+
+    def initialise(self):
+        # no async goal to start
+        pass
+
+    def update(self):
+        # If the agent is stunned/frozen, succeed so the frozen sequence runs
+        if self.i_state.isFrozen:
+            return pt.common.Status.SUCCESS
+        return pt.common.Status.FAILURE
+
+    def terminate(self, new_status: common.Status):
+        # nothing to clean up
+        pass
+
 class BTRoam:
     def __init__(self, aagent):
         py_trees.logging.level = py_trees.logging.Level.DEBUG
         self.aagent = aagent
 
-        # Behavior tree structure
-        root = pt.composites.Selector(name="Root", memory=False)
+        agent_type = aagent.AgentParameters["type"]
+        # Build root selector
+        root = pt.composites.Selector(name="Selector_root", memory=False)
 
-        # Return to base when inventory is full
-        return_to_base = pt.composites.Sequence(name="ReturnToBase", memory=True)
-        return_to_base.add_children([BN_CheckInventoryFull(aagent), BN_ReturnToBase(aagent)])
+        if agent_type == "AAgentCritterMantaRay":
+            # --- 1) Frozen check (sticky) ---
+            frozen = pt.composites.Sequence(name="Sequence_Frozen", memory=True)
+            frozen.add_children([
+                BN_DetectFrozen(aagent),
+                BN_DoNothing(aagent)
+            ])
 
-        # Collect flowers
-        collect_flower = pt.composites.Sequence(name="CollectFlower", memory=True)
-        collect_flower.add_children([BN_DetectFlower(aagent), BN_MoveToFlower(aagent)])
+            # --- 2) Hunt & Bite sequence (sticky) ---
+            hunt = pt.composites.Sequence(name="Sequence_HuntAstronaut", memory=True)
+            hunt.add_children([
+                BN_DetectAstronaut(aagent),
+                BN_FollowAstronaut(aagent),
+                BN_BiteAstronaut(aagent),
+                BN_MoveAway(aagent)
+            ])
 
-        # Wander (avoid obstacles or roam)
-        wander = pt.composites.Selector(name="Wander", memory=True)
-        wander.add_children([
-            BN_Avoid(aagent),
-            BN_RandomRoam(aagent)
-        ])
+            # --- 3) Wander when nothing else applies ---
+            wander = pt.composites.Selector(name="Wander", memory=True)
+            wander.add_children([
+                BN_Avoid(aagent),
+                BN_RandomRoam(aagent)
+            ])
 
-        root.add_children([return_to_base, collect_flower, wander])
+            root.add_children([frozen, hunt, wander])
+
+        else:
+            # --- Astronaut’s original tree ---
+            return_to_base = pt.composites.Sequence(name="ReturnToBase", memory=True)
+            return_to_base.add_children([
+                BN_CheckInventoryFull(aagent),
+                BN_ReturnToBase(aagent)
+            ])
+
+            collect_flower = pt.composites.Sequence(name="CollectFlower", memory=True)
+            collect_flower.add_children([
+                BN_DetectFlower(aagent),
+                BN_MoveToFlower(aagent)
+            ])
+
+            wander = pt.composites.Selector(name="Wander", memory=True)
+            wander.add_children([
+                BN_Avoid(aagent),
+                BN_RandomRoam(aagent)
+            ])
+
+            root.add_children([return_to_base, collect_flower, wander])
+
+        # Finalize the tree
         self.behaviour_tree = pt.trees.BehaviourTree(root)
 
     def set_invalid_state(self, node):
         node.status = pt.common.Status.INVALID
-        for child in node.children:
+        for child in getattr(node, "children", []):
             self.set_invalid_state(child)
 
     def stop_behaviour_tree(self):
