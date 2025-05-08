@@ -198,32 +198,32 @@ class MoveToFlower:
         self.a_agent = a_agent
         self.rc_sensor = a_agent.rc_sensor
         self.i_state = a_agent.i_state
-        self.initial_flower_count = sum(item["amount"] for item in self.i_state.myInventoryList if item["name"] == "AlienFlower")
+        self.initial_flower_count = sum(
+            item["amount"]
+            for item in self.i_state.myInventoryList
+            if item["name"] == "AlienFlower"
+        )
         self.lost_tolerance = 2   # how many consecutive “no-detections” we tolerate
+        # tuning constants:
+        self.TURN_TIME = 0.3      # seconds spent turning per step
+        self.FORWARD_TIME = 0.8   # seconds spent moving forward per step
 
     async def run(self):
         print("Starting MoveToFlower")
         lost_count = 0
-       # Detect all flowers and pick a central direction (median ray)
+
+        # initial detection
         flower_indices = [
             idx for idx, ray in enumerate(zip(*self.rc_sensor.sensor_rays))
             if ray[Sensors.RayCastSensor.HIT]
-               and ray[Sensors.RayCastSensor.OBJECT_INFO].get('tag') == 'AlienFlower'
+               and ray[Sensors.RayCastSensor.OBJECT_INFO].get("tag") == "AlienFlower"
         ]
         if not flower_indices:
             print("No flower detected")
             return False
-        flower_ray_index = int(sorted(flower_indices)[len(flower_indices) // 2])
-        print(f"Flower(s) detected at rays {flower_indices}, targeting ray {flower_ray_index}")
 
-        if flower_ray_index is None:
-            print("No flower detected")
-            return False
-
-        # Determine central ray index (assuming odd number of rays, e.g., 5 rays: center is 2)
         central_ray_index = len(self.rc_sensor.sensor_rays[Sensors.RayCastSensor.HIT]) // 2
 
-        # Move toward flower
         timeout = 10  # seconds
         start_time = asyncio.get_event_loop().time()
         max_attempts = 5
@@ -233,11 +233,11 @@ class MoveToFlower:
             attempt += 1
             print(f"Movement attempt {attempt}")
 
-            # Refresh flower list & re-pick median
+            # refresh
             flower_indices = [
                 idx for idx, ray in enumerate(zip(*self.rc_sensor.sensor_rays))
                 if ray[Sensors.RayCastSensor.HIT]
-                   and ray[Sensors.RayCastSensor.OBJECT_INFO].get('tag') == 'AlienFlower'
+                   and ray[Sensors.RayCastSensor.OBJECT_INFO].get("tag") == "AlienFlower"
             ]
             if not flower_indices:
                 lost_count += 1
@@ -252,35 +252,42 @@ class MoveToFlower:
             else:
                 lost_count = 0
 
-            flower_ray_index = int(sorted(flower_indices)[len(flower_indices) // 2])
+            # pick median flower
+            flower_ray_index = int(sorted(flower_indices)[len(flower_indices)//2])
+            print(f"Flower(s) at rays {flower_indices}, targeting ray {flower_ray_index}")
 
-            # Partial alignment + forward momentum:
+            # align & move
             if flower_ray_index < central_ray_index:
-                print("Flower detected on left, turn-left & move forward")
-                await self.a_agent.send_message("action", "tl,10")
+                print("Turn left toward flower")
+                await self.a_agent.send_message("action", "tl")
+                await asyncio.sleep(self.TURN_TIME)
+                await self.a_agent.send_message("action", "nt")
             elif flower_ray_index > central_ray_index:
-                print("Flower detected on right, turn-right & move forward")
-                await self.a_agent.send_message("action", "tr,10")
+                print("Turn right toward flower")
+                await self.a_agent.send_message("action", "tr")
+                await asyncio.sleep(self.TURN_TIME)
+                await self.a_agent.send_message("action", "nt")
             else:
-                print("Flower roughly ahead, move forward")
-                # no turn needed
-            # in all cases, advance a bit toward the flower
-            await asyncio.sleep(0.2)                # give turn a moment
-            await self.a_agent.send_message("action", "mf")
-            await asyncio.sleep(0.8)                # forward hop toward target 
+                print("Flower roughly ahead, no turn")
 
-            # Check if flower collected
-            current_flower_count = sum(item["amount"] for item in self.i_state.myInventoryList if item["name"] == "AlienFlower")
-            if current_flower_count > self.initial_flower_count:
+            # always advance
+            await self.a_agent.send_message("action", "mf")
+            await asyncio.sleep(self.FORWARD_TIME)
+
+            # check collection
+            current = sum(
+                item["amount"]
+                for item in self.i_state.myInventoryList
+                if item["name"] == "AlienFlower"
+            )
+            if current > self.initial_flower_count:
                 print("Flower collected successfully")
                 return True
 
-            # Check timeout
+            # timeout
             if asyncio.get_event_loop().time() - start_time > timeout:
                 print("Timeout: Flower not collected")
                 return False
-
-            await asyncio.sleep(0.3)
 
         print("Failed to collect flower after max attempts")
         return False
