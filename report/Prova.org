@@ -1,0 +1,10 @@
+#+TITLE: Report Behavior Tree
+#+AUTHOR: Josep Bonet i Saez (1633723)
+#+DATE: \today
+#+STARTUP: indent
+#+LATEX_HEADER: \usepackage{float}
+#+LATEX_HEADER: \usepackage{geometry}
+#+LATEX_HEADER: \usepackage{parskip}
+#+LATEX_HEADER: \geometry{a4paper}
+
+
