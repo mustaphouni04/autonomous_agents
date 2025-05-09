@@ -164,34 +164,74 @@ class Avoid:
         # Build a mask of True for any relevant obstacles:
         # Astronaut dodges Critters; Critter dodges Flowers (in addition to Walls/Rocks)
         agent_type = self.a_agent.AgentParameters["type"]
+        flower_mask = []
+        rock_mask = []
         close_mask = []
         for hit, info in zip(hits, infos):
             if not hit or info is None:
                 close_mask.append(False)
+                flower_mask.append(False)
+                rock_mask.append(False)
                 continue
             tag = info.get("tag")
             dist = info.get("distance", float("inf"))
             if dist >= self.threshold:
                 close_mask.append(False)
+                flower_mask.append(False)
+                rock_mask.append(False)
                 continue
 
             # Always treat walls/rocks as obstacles
             if tag in ("Rock", "Wall"):
                 close_mask.append(True)
+                rock_mask.append(True)
+                flower_mask.append(False)
                 continue
 
             # Astronaut must dodge Critters
             if agent_type == "AAgentAstronaut" and tag == "CritterMantaRay":
                 close_mask.append(True)
+                flower_mask.append(False)
+                rock_mask.append(False)
                 continue
 
             # Critter must ignore walls/rocks but also avoid Flowers
             if agent_type == "AAgentCritterMantaRay" and tag == "AlienFlower":
                 close_mask.append(True)
+                flower_mask.append(True)
+                rock_mask.append(False)
                 continue
 
             # otherwise not an obstacle for this agent
             close_mask.append(False)
+            flower_mask.append(False)
+            rock_mask.append(False)
+        
+        # SPECIAL CASE: Critter jammed between two+ flowers only — back up
+        if agent_type == "AAgentCritterMantaRay":
+            flower_hits = sum(flower_mask)
+            other_hits  = sum(rock_mask)
+            if flower_hits >= 2 and other_hits == 0:
+                print(f"Avoid: squeezed by {flower_hits} flowers, backing up")
+                await self.a_agent.send_message("action", "mb")
+                await asyncio.sleep(0.2)
+                return True
+
+        # SPECIAL CASE: Critter cornered between flower & wall
+        if agent_type == "AAgentCritterMantaRay":
+            num_rays = len(close_mask)
+            mid = num_rays // 2
+            # build a list of inner rays excluding the center
+            inner_except_center = [
+                close_mask[i]
+                for i in range(1, num_rays-1)
+                if i != mid
+            ]
+            if close_mask[0] and close_mask[-1] and not any(inner_except_center):
+                print("Avoid: cornered on edges (center ignored), backing up")
+                await self.a_agent.send_message("action", "mb")
+                await asyncio.sleep(0.5)
+                return True
 
         if not any(close_mask):
             # No obstacle close enough: let RandomRoam take over
