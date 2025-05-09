@@ -1,0 +1,52 @@
+#+TITLE: Report Behaviour Tree
+#+AUTHOR: Josep Bonet i Saez (1633723)
+#+DATE: \today
+#+STARTUP: indent
+#+LATEX_HEADER: \usepackage{float}
+#+LATEX_HEADER: \usepackage{geometry}
+#+LATEX_HEADER: \usepackage{parskip}
+#+LATEX_HEADER: \geometry{a4paper}
+
+
+* Intro
+In this assignment, we will use Behaviour Trees to implement relatively complex behaviours within the AAPE platform. Our main characters will be the Astronaut and CritterMantaRay agents.
+
+Different code files were given at the start. An example behaviour tree, BTRoam.py was provided as a reference example. Goals BT.py included three example goals (DoNothing, ForwardDist, and Turn) so we could test BTRoam.py file.
+
+AAgent-1.json is the configuration file for the Astronaut, while AAgent-2.json is for
+the Critter agent. You may modify these files as needed or create new ones.
+Additionally, APackAstroCritters.json is an example configuration file for the
+Spawner (Spawner.pt), which spawns one Astronaut and ten Critters.
+The AAgent_BT.py is the agent's main code. Initially, you only need to modify that file
+to register your goals and behaviour trees.
+
+
+* Scenario Alone
+Our Astronaut has been assigned to the DarkHole deep-space collection outpost. Her mission is to collect a rare species of alien flower. Fortunately, she is alone at the outpost, so gathering the flowers should be straightforward.
+
+The Astronaut starts at the Base outpost (spawn point 0). The number of alien flowers remains constant. Whenever the astronaut collects a flower, a new one will randomly spawn in the harvest zone after a short delay. Implement her behaviour.
+
+** Behaviour Tree Alone
+The behaviour Tree is implemented in BTRoam.py:
+
+Selector: Root
+ * Sequence: ReturnToBase --> BN_ CheckInventoryFull; BN_ ReturnToBase
+ * Sequence: CollectFlower --> BN_ DetectFlower; BN_ MoveToFlower
+ * Selector: Wander --> BN_ Avoid; BN_ RandomRoam
+
+The following classes were implemented in Goals_ BT.py
+ * RandomRoam: Single-step stochastic roaming
+   * If a flower is spotted: preempts
+   * 20% chance to turn slightly, 80% chance to step forward
+   * Returns true whenever it issues an action
+ * Avoid: Single-tick obstacle avoidance
+   * If any Rock/wall is within threshold distance, turn away and return true
+   * Return False so the tree moves on to RandomRoam
+ * DetectFlower: Checks if the sensor find an "AlienFlower"
+ * MoveToFlower:
+ * ReturnToBase: Returnsto the base and then the saves the flowers.
+ * CheckInventory: Counts the flowers in inventory and returns true if there are 2 or more.
+* Scenario Critters
+We now move to a new collection outpost, situated on a small moon near Saturn. However, hostile life forms have been discovered there. Now we will implement the behaviour of these life forms.
+** Behaviour Tree Critters
+* Scenario Collect-and-run

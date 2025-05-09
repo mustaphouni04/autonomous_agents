@@ -1,0 +1,87 @@
+% Created 2025-05-08 dj. 23:38
+% Intended LaTeX compiler: pdflatex
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{geometry}
+\usepackage{parskip}
+\geometry{a4paper}
+\author{Josep Bonet i Saez (1633723)}
+\date{\today}
+\title{Report Behaviour Tree}
+\hypersetup{
+ pdfauthor={Josep Bonet i Saez (1633723)},
+ pdftitle={Report Behaviour Tree},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={Emacs 30.1 (Org mode 9.7.11)}, 
+ pdflang={English}}
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\section{Intro}
+\label{sec:org99374d3}
+In this assignment, we will use Behaviour Trees to implement relatively complex behaviours within the AAPE platform. Our main characters will be the Astronaut and CritterMantaRay agents.
+
+Different code files were given at the start. An example behaviour tree, BTRoam.py was provided as a reference example. Goals BT.py included three example goals (DoNothing, ForwardDist, and Turn) so we could test BTRoam.py file.
+
+AAgent-1.json is the configuration file for the Astronaut, while AAgent-2.json is for
+the Critter agent. You may modify these files as needed or create new ones.
+Additionally, APackAstroCritters.json is an example configuration file for the
+Spawner (Spawner.pt), which spawns one Astronaut and ten Critters.
+The AAgent\textsubscript{BT.py} is the agent's main code. Initially, you only need to modify that file
+to register your goals and behaviour trees.
+\section{Scenario Alone}
+\label{sec:org0401d27}
+Our Astronaut has been assigned to the DarkHole deep-space collection outpost. Her mission is to collect a rare species of alien flower. Fortunately, she is alone at the outpost, so gathering the flowers should be straightforward.
+
+The Astronaut starts at the Base outpost (spawn point 0). The number of alien flowers remains constant. Whenever the astronaut collects a flower, a new one will randomly spawn in the harvest zone after a short delay. Implement her behaviour.
+\subsection{Behaviour Tree Alone}
+\label{sec:org41db1b6}
+The behaviour Tree is implemented in BTRoam.py:
+
+Selector: Root
+\begin{itemize}
+\item Sequence: ReturnToBase --> BN\_ CheckInventoryFull; BN\_ ReturnToBase
+\item Sequence: CollectFlower --> BN\_ DetectFlower; BN\_ MoveToFlower
+\item Selector: Wander --> BN\_ Avoid; BN\_ RandomRoam
+\end{itemize}
+
+The following classes were implemented in Goals\_ BT.py
+\begin{itemize}
+\item RandomRoam: Single-step stochastic roaming
+\begin{itemize}
+\item If a flower is spotted: preempts
+\item 20\% chance to turn slightly, 80\% chance to step forward
+\item Returns true whenever it issues an action
+\end{itemize}
+\item Avoid: Single-tick obstacle avoidance
+\begin{itemize}
+\item If any Rock/wall is within threshold distance, turn away and return true
+\item Return False so the tree moves on to RandomRoam
+\end{itemize}
+\item DetectFlower: Checks if the sensor find an "AlienFlower"
+\item MoveToFlower:
+\item ReturnToBase: Returnsto the base and then the saves the flowers.
+\item CheckInventory: Counts the flowers in inventory and returns true if there are 2 or more.
+\end{itemize}
+\section{Scenario Critters}
+\label{sec:org6dfd90e}
+We now move to a new collection outpost, situated on a small moon near Saturn. However, hostile life forms have been discovered there. Now we will implement the behaviour of these life forms.
+\subsection{Behaviour Tree Critters}
+\label{sec:org9dda7be}
+\section{Scenario Collect-and-run}
+\label{sec:org3071b71}
+\end{document}
