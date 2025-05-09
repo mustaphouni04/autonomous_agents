@@ -374,30 +374,10 @@ class ReturnToBase:
         print("Returning to Base")
         await self.a_agent.send_message("action", "walk_to,Base")
         await asyncio.sleep(0.5)
-        """
-        if self.i_state.currentNamedLoc != "Base":
-            print("Teleport failed: Unable to reach Base")
-            return False
-        """
+        
         print("Unloading flowers at Base")
         await self.a_agent.send_message("action", "leave,AlienFlower,2")
-        # Verify inventory
-        """
-        flower_count = next(
-            (item['amount'] for item in self.i_state.myInventoryList if item['name'] == 'AlienFlower'),
-            0
-        )
-        if flower_count > 0:
-            print(f"Warning: {flower_count} flowers remain in inventory after unload")
-            self.i_state.myInventoryList = [item for item in self.i_state.myInventoryList if item["name"] != "AlienFlower"]
-        # Move away from base
-        print("Moving away from Base to clear area")
-        await self.a_agent.send_message("action", "mf")
-        await asyncio.sleep(2)
-        await self.a_agent.send_message("action", random.choice(["tr,90", "tl,90"]))
-        await asyncio.sleep(0.5)
-        print("Resuming flower hunt")
-        """
+        
         return True
 
 class CheckInventoryFull:
