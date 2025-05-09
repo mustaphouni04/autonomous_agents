@@ -146,21 +146,15 @@ class Avoid:
         self.a_agent = a_agent
         self.rc_sensor = a_agent.rc_sensor
         self.threshold = distance_threshold
+        self.last_turn = None
+        self.oscillations = 0
+        self.osc_threshold = 4
 
     async def run(self) -> bool:
         # Pair hits with their object info
         hits = self.rc_sensor.sensor_rays[Sensors.RayCastSensor.HIT]
         infos = self.rc_sensor.sensor_rays[Sensors.RayCastSensor.OBJECT_INFO]
 
-        # Build a mask of True only for Rock/Wall hits within threshold
-        """
-        close_mask = []
-        for hit, info in zip(hits, infos):
-            if hit and info and info.get("tag") in ("Rock", "Wall") and info.get("distance", float("inf")) < self.threshold:
-                close_mask.append(True)
-            else:
-                close_mask.append(False)
-        """
         # Build a mask of True for any relevant obstacles:
         # Astronaut dodges Critters; Critter dodges Flowers (in addition to Walls/Rocks)
         agent_type = self.a_agent.AgentParameters["type"]
@@ -212,25 +206,44 @@ class Avoid:
             flower_hits = sum(flower_mask)
             other_hits  = sum(rock_mask)
             if flower_hits >= 2 and other_hits == 0:
-                print(f"Avoid: squeezed by {flower_hits} flowers, backing up")
-                await self.a_agent.send_message("action", "mb")
-                await asyncio.sleep(0.2)
+                # Simple escape: rotate then advance
+                direction = random.choice(["tr", "tl"])
+                print(f"Avoid: squeezed by {flower_hits} flowers—turning {direction} & moving forward")
+                await self.a_agent.send_message("action", direction)
+                await asyncio.sleep(0.5)
+                await self.a_agent.send_message("action", "nt")
+                await self.a_agent.send_message("action", "mf")
+                await asyncio.sleep(0.5)
                 return True
 
-        # SPECIAL CASE: Critter cornered between flower & wall
+        # SPECIAL CASE: Critter oscillating stuck between obstacles
         if agent_type == "AAgentCritterMantaRay":
-            num_rays = len(close_mask)
-            mid = num_rays // 2
-            # build a list of inner rays excluding the center
-            inner_except_center = [
-                close_mask[i]
-                for i in range(1, num_rays-1)
-                if i != mid
-            ]
-            if close_mask[0] and close_mask[-1] and not any(inner_except_center):
-                print("Avoid: cornered on edges (center ignored), backing up")
-                await self.a_agent.send_message("action", "mb")
+            # determine current turn direction from side counts
+            mid = len(close_mask) // 2
+            left_block  = sum(close_mask[:mid])
+            right_block = sum(close_mask[mid+1:])
+            # choose what we'd turn this tick
+            current_turn = "tr" if left_block >= right_block else "tl"
+            # detect alternation
+            if self.last_turn and current_turn != self.last_turn:
+                self.oscillations += 1
+            else:
+                self.oscillations = 0
+            self.last_turn = current_turn
+
+            if self.oscillations >= self.osc_threshold:
+                # escape maneuver if stuck in oscillation
+                print(f"Avoid: detected oscillation ({self.oscillations}), escaping")
+                # rotate
+                await self.a_agent.send_message("action", current_turn)
+                await asyncio.sleep(1.5)
+                await self.a_agent.send_message("action", "nt")
+                # move forward
+                await self.a_agent.send_message("action", "mf")
                 await asyncio.sleep(0.5)
+                # reset oscillation tracking
+                self.oscillations = 0
+                self.last_turn = None
                 return True
 
         if not any(close_mask):
@@ -451,12 +464,24 @@ class BiteAstronaut:
 class MoveAway:
     def __init__(self, a_agent):
         self.a_agent = a_agent
-        self.SAFE_TIME = 1.0
+        self.BACKUP_TIME = 0.5   # how long to back away
+        self.SAFETY_TIME = 1.0   # forward “recovery” time
+        self.ROTATE_TIME = 0.5   # how long to spend turning
 
     async def run(self) -> bool:
-        # back away a bit
+        # 1) Back away
         await self.a_agent.send_message("action", "mb")
-        await asyncio.sleep(self.SAFE_TIME)
+        await asyncio.sleep(self.BACKUP_TIME)
+
+        # 2) Spin to give the Astronaut space
+        direction = random.choice(["tr", "tl"])
+        print(f"MoveAway: rotating {direction} for space")
+        await self.a_agent.send_message("action", direction)
+        await asyncio.sleep(self.ROTATE_TIME)
+        await self.a_agent.send_message("action", "nt")
+
+        # 3) Advance forward a bit
         await self.a_agent.send_message("action", "mf")
-        await asyncio.sleep(self.SAFE_TIME)
+        await asyncio.sleep(self.SAFETY_TIME)
+
         return True

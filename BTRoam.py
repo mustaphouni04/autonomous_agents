@@ -263,18 +263,10 @@ class BTRoam:
         self.aagent = aagent
 
         agent_type = aagent.AgentParameters["type"]
-        # Build root selector
         root = pt.composites.Selector(name="Selector_root", memory=False)
 
         if agent_type == "AAgentCritterMantaRay":
-            # --- 1) Frozen check (sticky) ---
-            frozen = pt.composites.Sequence(name="Sequence_Frozen", memory=True)
-            frozen.add_children([
-                BN_DetectFrozen(aagent),
-                BN_DoNothing(aagent)
-            ])
-
-            # --- 2) Hunt & Bite sequence (sticky) ---
+            # --- Critter’s hunt logic (no frozen check) ---
             hunt = pt.composites.Sequence(name="Sequence_HuntAstronaut", memory=True)
             hunt.add_children([
                 BN_DetectAstronaut(aagent),
@@ -283,17 +275,22 @@ class BTRoam:
                 BN_MoveAway(aagent)
             ])
 
-            # --- 3) Wander when nothing else applies ---
             wander = pt.composites.Selector(name="Wander", memory=True)
             wander.add_children([
                 BN_Avoid(aagent),
                 BN_RandomRoam(aagent)
             ])
 
-            root.add_children([frozen, hunt, wander])
+            root.add_children([hunt, wander])
 
         else:
-            # --- Astronaut’s original tree ---
+            # --- Astronaut’s tree with frozen check first ---
+            frozen = pt.composites.Sequence(name="Sequence_Frozen", memory=True)
+            frozen.add_children([
+                BN_DetectFrozen(aagent),
+                BN_DoNothing(aagent)
+            ])
+
             return_to_base = pt.composites.Sequence(name="ReturnToBase", memory=True)
             return_to_base.add_children([
                 BN_CheckInventoryFull(aagent),
@@ -312,7 +309,7 @@ class BTRoam:
                 BN_RandomRoam(aagent)
             ])
 
-            root.add_children([return_to_base, collect_flower, wander])
+            root.add_children([frozen, return_to_base, collect_flower, wander])
 
         # Finalize the tree
         self.behaviour_tree = pt.trees.BehaviourTree(root)
